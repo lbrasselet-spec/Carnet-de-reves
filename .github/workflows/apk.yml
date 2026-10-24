@@ -1,0 +1,191 @@
+# Carnet de rêves — fabrication automatique de l'application Android (APK).
+# À chaque modification de index.html ou du dossier android/, GitHub compile l'application,
+# la signe, la publie sur la page « Releases » du dépôt (lien ci-dessous), puis l'essaie sur un
+# téléphone virtuel Android 15 (le résultat s'affiche sur la page de téléchargement) :
+# https://github.com/lbrasselet-spec/Carnet-de-reves/releases/download/apk/Carnet-de-reves.apk
+# Clé de signature : créée automatiquement à la première compilation puis enregistrée dans le dépôt
+# (android/keystore/). Toujours la même clé : les mises à jour s'installent par-dessus l'ancienne
+# version sans perdre les rêves. Dépôt public : n'installez l'appli que depuis le lien ci-dessus.
+name: Application Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', 'android/**', '.github/workflows/apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Outils de compilation Android (paquets Ubuntu)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends aapt android-sdk-platform-23 dalvik-exchange zipalign apksigner python3-pil > /dev/null
+
+      - name: Clé de signature
+        run: |
+          if [ -f android/keystore/carnetreves.p12 ]; then echo "CLE=existante" >> "$GITHUB_ENV"
+          else echo "CLE=nouvelle" >> "$GITHUB_ENV"; echo "::notice title=Signature::Première compilation : création de la clé de signature de l'appli."; fi
+
+      - name: Compiler l'APK
+        shell: bash
+        run: |
+          export APK_NAME=Carnet-de-reves.apk
+          export VERSION_CODE=$(( GITHUB_RUN_NUMBER + 1 )) VERSION_NAME="1.0.${GITHUB_RUN_NUMBER}"
+          bash android/build.sh
+          cp android/Carnet-de-reves.apk .
+          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+
+      - name: Conserver la nouvelle clé dans le dépôt
+        if: env.CLE == 'nouvelle'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f android/keystore/carnetreves.p12
+          git commit -m "Clé de signature de l'appli (créée automatiquement, ne pas supprimer)"
+          git push || { echo "::error title=Clé de signature::Impossible d'enregistrer la clé dans le dépôt ; APK non publié."; exit 1; }
+
+      - name: Publier l'APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk > /dev/null 2>&1 || gh release create apk --title "Carnet de rêves — application Android" --notes "Application Android à installer sur le téléphone."
+          gh release upload apk Carnet-de-reves.apk --clobber
+          gh release edit apk --notes "Version ${VERSION_NAME} du $(TZ=Europe/Paris date '+%d/%m/%Y à %H:%M'). Téléchargez Carnet-de-reves.apk ci-dessous (Android 10 ou plus récent). Essai automatique sur Android 15 en cours…"
+          echo "::notice::APK publié (version ${VERSION_NAME}) : https://github.com/${GITHUB_REPOSITORY}/releases/download/apk/Carnet-de-reves.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: Carnet-de-reves.apk
+
+  # Essai automatique sur un téléphone virtuel Android 15 : installation, démarrage, ouverture de
+  # l'éditeur, bouton « retour », écran « Cette nuit » et réveil, recherche de plantages.
+  test:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apk
+
+      - name: Activer l'accélération de l'émulateur
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Préparer le scénario d'essai
+        run: |
+          cat > "$RUNNER_TEMP/essai.sh" <<'FIN'
+          P=fr.brasselet.carnetreves
+          R=resultats.txt; : > "$R"
+          ok() { echo "OK — $1" >> "$R"; }
+          ko() { echo "ÉCHEC — $1" >> "$R"; }
+          info() { echo "INFO — $1" >> "$R"; }
+          haut() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" | sed -E 's/.*\{[^ ]+ [^ ]+ ([^ }]+).*/\1/'; }
+          ecran() { adb shell uiautomator dump /sdcard/ui.xml > dump.txt 2>&1; adb shell cat /sdcard/ui.xml > "$1" 2>/dev/null; }
+          centre() { grep -oE "(text|content-desc)=\"$1\"[^>]*bounds=\"[^\"]*\"" "$2" | head -1 | sed -E 's/.*bounds="\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]".*/\1 \2 \3 \4/' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}'; }
+          a() { grep -qE "(text|content-desc)=\"$1\"" "$2"; }
+          retour() { for i in 1 2 3; do case "$(haut)" in "$P"*) return;; esac; adb shell input keyevent KEYCODE_BACK; sleep 3; done; }
+
+          adb install -r Carnet-de-reves.apk > install.txt 2>&1 && ok "Installation" || ko "Installation : $(tail -1 install.txt)"
+          adb logcat -c
+          adb shell input keyevent 82
+          adb shell am start -W -n "$P/.MainActivity" > start.txt 2>&1
+          sleep 15
+          adb logcat -d > logcat-debut.txt
+          if grep -q "Carnet de rêves prêt" logcat-debut.txt; then ok "Page de l'appli chargée"; else ko "Page de l'appli non chargée"; fi
+          ecran ui1.xml; sleep 3; ecran ui1.xml
+          adb exec-out screencap -p > ecran-1-journal.png
+          if a 'Noter un rêve' ui1.xml; then ok "Démarrage : journal affiché"; else ko "Démarrage : journal non trouvé ($(haut))"; fi
+
+          C=$(centre 'Noter un rêve' ui1.xml)
+          if [ -n "$C" ]; then
+            adb shell input tap $C; sleep 4; ecran ui2.xml
+            adb exec-out screencap -p > ecran-2-editeur.png
+            if a 'Enregistrer le rêve' ui2.xml; then ok "Éditeur de rêve ouvert"; else ko "Éditeur de rêve non ouvert"; fi
+            adb shell input keyevent KEYCODE_BACK; sleep 3; ecran ui3.xml
+            case "$(haut)" in "$P"*) if a 'Noter un rêve' ui3.xml; then ok "Bouton retour : revient au journal"; else ko "Bouton retour : journal non réaffiché"; fi;;
+              *) ko "Bouton retour : l'appli s'est fermée au lieu de revenir au journal"; adb shell am start -W -n "$P/.MainActivity" > /dev/null; sleep 6;; esac
+          else ko "Bouton « Noter un rêve » introuvable"; fi
+
+          ecran ui4.xml
+          C=$(centre 'Cette nuit' ui4.xml)
+          if [ -n "$C" ]; then
+            adb shell input tap $C; sleep 3; ecran ui5.xml
+            adb exec-out screencap -p > ecran-3-nuit.png
+            if a 'Régler le réveil du téléphone' ui5.xml; then ok "Écran « Cette nuit » affiché"; else ko "Écran « Cette nuit » incomplet"; fi
+            C=$(centre 'Régler le réveil du téléphone' ui5.xml)
+            if [ -n "$C" ]; then
+              adb shell input tap $C; sleep 5
+              T=$(haut); adb exec-out screencap -p > ecran-4-reveil.png
+              case "$T" in "$P"*) info "Appli Horloge non ouverte (absente du téléphone virtuel ?)";; *) ok "Horloge ouverte avec l'heure du réveil ($T)";; esac
+              retour
+            fi
+          else ko "Onglet « Cette nuit » introuvable"; fi
+
+          sleep 2; adb exec-out screencap -p > ecran-5-fin.png
+          adb logcat -d > logcat.txt
+          if grep -A2 "FATAL EXCEPTION" logcat.txt | grep -q "Process: $P"; then
+            ko "Plantage : $(grep -A6 'FATAL EXCEPTION' logcat.txt | grep -A4 "Process: $P" | tail -3 | tr -s ' ' | tr '\n' ' ' | cut -c1-300)"
+          else ok "Aucun plantage de l'appli"; fi
+          grep -E "chromium.*(Uncaught|SyntaxError|TypeError|ReferenceError)" logcat.txt | head -5 > js.txt
+          if [ -s js.txt ]; then ko "Erreur dans la page : $(sed -n 1p js.txt | cut -c1-250)"; else ok "Aucune erreur JavaScript"; fi
+          {
+            echo "Démarrage : $(tr '\n' ' ' < start.txt | cut -c1-300)"
+            echo "Textes lus : $(grep -o 'text="[^"]*"' ui1.xml | sed 's/text="//;s/"$//' | grep -v '^$' | head -15 | tr '\n' '|')"
+            echo "Journal de la page : $(grep -E 'CONSOLE|chromium' logcat.txt | tail -6 | cut -c1-220 | tr '\n' '|')"
+          } > diagnostic.txt
+          exit 0
+          FIN
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash "$RUNNER_TEMP/essai.sh"
+
+      - name: Résultats de l'essai
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -s resultats.txt ] || echo "ÉCHEC — essai non réalisé (téléphone virtuel indisponible)" > resultats.txt
+          cat resultats.txt
+          echo "::notice title=Essai Android 15::$(sed 's/%/%25/g' resultats.txt | awk '{printf "%s%%0A", $0}')"
+          V=$(gh release view apk -R "$GITHUB_REPOSITORY" --json body -q .body | sed -n 1p | sed 's/ Essai automatique.*//')
+          printf '%s\n\nEssai automatique sur un téléphone virtuel Android 15 :\n%s\n' "$V" "$(sed 's/^/- /' resultats.txt)" > notes.md
+          gh release edit apk -R "$GITHUB_REPOSITORY" --notes-file notes.md
+          [ -f diagnostic.txt ] && echo "::notice title=Diagnostic::$(sed 's/%/%25/g' diagnostic.txt | awk '{printf "%s%%0A", $0}')"
+          # captures d'écran de l'essai, consultables dans la branche « essais » du dépôt
+          D="$RUNNER_TEMP/essais"; mkdir -p "$D"; cp ecran-*.png resultats.txt diagnostic.txt ui1.xml "$D/" 2>/dev/null || true
+          ( cd "$D" && git init -q -b essais && git add -A \
+            && git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Essai Android 15 — exécution $GITHUB_RUN_NUMBER" \
+            && git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" essais ) || echo "::warning::Captures d'écran non déposées."
+          if grep -q '^ÉCHEC' resultats.txt; then echo "::error title=Essai::Au moins un contrôle a échoué (voir ci-dessus)."; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: essai-android-15
+          path: |
+            ecran-*.png
+            logcat.txt
+            resultats.txt
