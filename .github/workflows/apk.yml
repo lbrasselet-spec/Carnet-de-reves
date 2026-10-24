@@ -120,6 +120,8 @@ jobs:
             adb exec-out screencap -p > ecran-2-editeur.png
             if a 'Enregistrer le rêve' ui2.xml; then ok "Éditeur de rêve ouvert"; else ko "Éditeur de rêve non ouvert"; fi
             adb shell input keyevent KEYCODE_BACK; sleep 3; ecran ui3.xml
+            # le premier « retour » ferme le clavier ouvert sur le récit ; le second ferme l'éditeur
+            if a 'Enregistrer le rêve' ui3.xml; then adb shell input keyevent KEYCODE_BACK; sleep 3; ecran ui3.xml; fi
             case "$(haut)" in "$P"*) if a 'Noter un rêve' ui3.xml; then ok "Bouton retour : revient au journal"; else ko "Bouton retour : journal non réaffiché"; fi;;
               *) ko "Bouton retour : l'appli s'est fermée au lieu de revenir au journal"; adb shell am start -W -n "$P/.MainActivity" > /dev/null; sleep 6;; esac
           else ko "Bouton « Noter un rêve » introuvable"; fi
