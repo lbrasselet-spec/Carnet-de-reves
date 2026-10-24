@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#15110f">
+<title>Carnet de rêves</title>
+<!--
+  Carnet de rêves — journal et entraînement au rêve lucide.
+  Fonctionne dans l'appli Android (pont « CRNative ») et, pour les essais, dans un navigateur.
+  Les rêves restent sur le téléphone (IndexedDB) ; sauvegarde manuelle en fichier .json.
+-->
+<style>
+@font-face{font-family:"Instrument Serif";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/instrument-400.woff2) format("woff2")}
+@font-face{font-family:"Instrument Serif";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/instrument-400i.woff2) format("woff2")}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/atkinson-400.woff2) format("woff2")}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/atkinson-400i.woff2) format("woff2")}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/atkinson-700.woff2) format("woff2")}
+
+/* Mise en page : une colonne étroite pensée pour le pouce, lumière ambrée sans bleu pour un usage au réveil, dans le noir. */
+:root{
+  --nuit:#15110f;        /* fond */
+  --veille:#201a16;      /* surfaces */
+  --trait:#3a2f27;       /* bordures */
+  --papier:#100d0b;      /* fond de la toile de dessin */
+  --encre:#ead9c2;       /* texte principal */
+  --brume:#a8957f;       /* texte secondaire */
+  --ambre:#e0a35c;       /* accent */
+  --ambre-fonce:#3d2a17; /* accent atténué */
+  --rouge:#d9775f;       /* suppression */
+  --f-titre:"Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --f-texte:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --nav:64px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0}
+body{
+  background:var(--nuit);color:var(--encre);
+  font-family:var(--f-texte);font-size:16px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-top:calc(20px + env(safe-area-inset-top, 0px));
+  padding-bottom:calc(var(--nav) + 110px + env(safe-area-inset-bottom, 0px));
+  -webkit-tap-highlight-color:transparent;
+}
+html.sombre{filter:brightness(.55)}   /* sur html : garde la barre du bas fixe */
+[hidden]{display:none!important}
+.col{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--ambre);outline-offset:2px}
+a{color:var(--ambre)}
+
+/* En-tête */
+.tete{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.tete h1{font-family:var(--f-titre);font-weight:400;font-style:italic;font-size:2.4rem;line-height:1;margin:0;text-wrap:balance}
+.tete p{margin:6px 0 0;color:var(--brume);font-size:.9rem}
+.mode{font-size:.75rem;color:var(--brume);letter-spacing:.04em}
+h2.section{font-family:var(--f-titre);font-weight:400;font-size:1.6rem;line-height:1.1;margin:0}
+
+/* Cartes */
+.carte{background:var(--veille);border:1px solid var(--trait);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.carte h3{margin:0;font-family:var(--f-titre);font-weight:400;font-size:1.35rem;line-height:1.15}
+.carte p{margin:0}
+.carte .note{font-size:.85rem;color:var(--brume)}
+.carte.accent{border-color:var(--ambre)}
+
+/* Rappel de test de réalité */
+.rappel{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.rappel strong{font-family:var(--f-titre);font-weight:400;font-size:1.3rem}
+.rappel .boutons{display:flex;gap:8px}
+
+/* Statistiques */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--trait);border:1px solid var(--trait);border-radius:10px;overflow:hidden}
+.stat{background:var(--veille);padding:12px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font-family:var(--f-titre);font-weight:400;font-size:1.9rem;line-height:1;font-variant-numeric:tabular-nums;color:var(--ambre)}
+.stat span{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--brume)}
+.signes{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.85rem;color:var(--brume)}
+.signes strong{font-weight:400;color:var(--encre)}
+table.tech{width:100%;border-collapse:collapse;font-size:.88rem}
+table.tech th{font-weight:400;text-align:left;color:var(--brume);font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:4px 6px 6px 0}
+table.tech td{padding:6px 6px 6px 0;border-top:1px solid var(--trait);font-variant-numeric:tabular-nums}
+table.tech td:not(:first-child),table.tech th:not(:first-child){text-align:right}
+
+/* Filtres */
+.filtres{display:flex;gap:8px;flex-wrap:wrap}
+.filtres input{flex:1 1 180px;min-width:0;background:var(--veille);border:1px solid var(--trait);border-radius:8px;padding:9px 12px}
+.puce{border:1px solid var(--trait);background:transparent;border-radius:999px;padding:6px 12px;font-size:.85rem;color:var(--brume)}
+.puce[aria-pressed="true"]{background:var(--ambre-fonce);border-color:var(--ambre);color:var(--encre)}
+.puces{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Liste des rêves */
+.liste{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--trait)}
+.reve{display:grid;grid-template-columns:1fr auto;gap:12px;padding:14px 2px;border-bottom:1px solid var(--trait);background:none;border-left:0;border-right:0;border-top:0;text-align:left;width:100%}
+.reve:active{background:var(--veille)}
+.reve > div{min-width:0;display:flex;flex-direction:column;gap:4px}
+.reve .date{font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;color:var(--brume)}
+.reve h3{margin:0;font-family:var(--f-titre);font-weight:400;font-size:1.35rem;line-height:1.15}
+.reve p{margin:0;color:var(--brume);font-size:.9rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.reve img{width:64px;height:64px;border-radius:6px;object-fit:cover;border:1px solid var(--trait)}
+.marques{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:.72rem;padding:2px 8px;border-radius:999px;border:1px solid var(--trait);color:var(--brume)}
+.tag.lucide{border-color:var(--ambre);color:var(--ambre)}
+.tag.furtive{border-style:dashed;color:var(--encre)}
+.vide{padding:28px 4px;color:var(--brume);display:flex;flex-direction:column;gap:8px}
+.vide h2{margin:0;font-family:var(--f-titre);font-weight:400;font-style:italic;font-size:1.6rem;color:var(--encre)}
+.vide p{margin:0;max-width:60ch}
+
+/* Bouton flottant */
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav) + 16px + env(safe-area-inset-bottom, 0px));
+  background:var(--ambre);color:var(--papier);border:0;border-radius:999px;padding:14px 26px;font-weight:700;font-size:1rem;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);z-index:5}
+
+/* Barre de navigation */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:grid;grid-template-columns:repeat(4,1fr);
+  background:var(--veille);border-top:1px solid var(--trait);padding-bottom:env(safe-area-inset-bottom, 0px)}
+.nav button{background:none;border:0;height:var(--nav);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--brume);font-size:.75rem}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.nav button[aria-current="page"]{color:var(--ambre)}
+
+/* Éditeur */
+.barre{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.lien{background:none;border:0;color:var(--brume);padding:6px 0;font-size:.95rem}
+.champ{display:flex;flex-direction:column;gap:6px}
+.champ > label,.etiquette{font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;color:var(--brume)}
+.champ input,.champ textarea,.champ select{background:var(--veille);border:1px solid var(--trait);border-radius:8px;padding:10px 12px;width:100%}
+#titre{font-family:var(--f-titre);font-size:1.5rem;padding:8px 12px}
+#recit{min-height:42vh;resize:vertical;line-height:1.6}
+.aide{font-size:.8rem;color:var(--brume);margin:0}
+.ligne{display:flex;gap:16px;flex-wrap:wrap}
+.ligne > .champ{flex:1 1 200px;min-width:0}
+.segment{display:flex;border:1px solid var(--trait);border-radius:8px;overflow:hidden}
+.segment button{flex:1;background:none;border:0;padding:9px 6px;font-size:.88rem;color:var(--brume)}
+.segment button + button{border-left:1px solid var(--trait)}
+.segment button[aria-pressed="true"]{background:var(--ambre-fonce);color:var(--encre)}
+.clarte{display:flex;gap:6px}
+.clarte button{width:38px;height:38px;border-radius:50%;border:1px solid var(--trait);background:none;color:var(--brume);font-variant-numeric:tabular-nums}
+.clarte button.on{background:var(--ambre);border-color:var(--ambre);color:var(--papier);font-weight:700}
+
+/* Dessin */
+.dessin{display:flex;flex-direction:column;gap:10px}
+.toile{position:relative;width:100%;max-width:100%;aspect-ratio:1/1;border:1px solid var(--trait);border-radius:10px;overflow:hidden;background:var(--papier)}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+.outils{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.couleur{width:30px;height:30px;border-radius:50%;border:2px solid transparent;padding:0}
+.couleur[aria-pressed="true"]{border-color:var(--encre);box-shadow:0 0 0 2px var(--nuit) inset}
+.outil{background:var(--veille);border:1px solid var(--trait);border-radius:8px;padding:6px 10px;font-size:.85rem}
+.outil[aria-pressed="true"]{border-color:var(--ambre);color:var(--ambre)}
+.epaisseur{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--brume);flex:1 1 140px}
+.epaisseur input{flex:1;accent-color:var(--ambre)}
+
+.actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.principal{background:var(--ambre);color:var(--papier);border:0;border-radius:8px;padding:12px 22px;font-weight:700}
+.secondaire{background:none;border:1px solid var(--trait);color:var(--encre);border-radius:8px;padding:10px 14px}
+.danger{background:none;border:1px solid var(--trait);color:var(--rouge);border-radius:8px;padding:10px 14px}
+.danger.arme{border-color:var(--rouge);background:var(--rouge);color:var(--papier)}
+
+/* Cette nuit */
+.heure{font-family:var(--f-titre);font-size:3.2rem;line-height:1;color:var(--ambre);font-variant-numeric:tabular-nums}
+.etapes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px;counter-reset:e}
+.etapes li{counter-increment:e;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
+.etapes li::before{content:counter(e);width:26px;height:26px;border-radius:50%;border:1px solid var(--ambre);color:var(--ambre);display:flex;align-items:center;justify-content:center;font-size:.8rem}
+.etapes li p{margin:0}
+.phrase{font-family:var(--f-titre);font-style:italic;font-size:1.35rem;line-height:1.25;color:var(--encre);border-left:2px solid var(--ambre);padding-left:12px}
+
+/* Tests de réalité */
+.compteur{display:flex;align-items:baseline;gap:10px}
+.compteur b{font-family:var(--f-titre);font-weight:400;font-size:3.2rem;line-height:1;color:var(--ambre);font-variant-numeric:tabular-nums}
+.compteur span{color:var(--brume)}
+.semaine{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:64px}
+.semaine div{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;font-size:.7rem;color:var(--brume)}
+.semaine i{display:block;width:100%;max-width:26px;background:var(--ambre);border-radius:3px 3px 0 0;min-height:2px}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:1.6rem;letter-spacing:.12em;color:var(--encre);background:var(--papier);border:1px solid var(--trait);border-radius:8px;padding:10px;text-align:center}
+
+/* Guide */
+details{background:var(--veille);border:1px solid var(--trait);border-radius:12px;padding:0 16px}
+details[open]{padding-bottom:14px}
+summary{cursor:pointer;padding:14px 0;font-family:var(--f-titre);font-size:1.3rem;list-style:none;display:flex;justify-content:space-between;gap:10px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--ambre);font-family:var(--f-texte)}
+details[open] summary::after{content:"–"}
+details p,details li{color:var(--encre);font-size:.95rem}
+details p{margin:0 0 10px}
+details ul,details ol{margin:0 0 10px;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.preuve{display:inline-block;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;padding:1px 8px;border-radius:999px;border:1px solid var(--trait);color:var(--brume);margin-left:4px;vertical-align:2px}
+.preuve.forte{border-color:var(--ambre);color:var(--ambre)}
+.biblio li{font-size:.85rem;color:var(--brume)}
+.pied{font-size:.75rem;color:var(--brume);text-align:center}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top, 0px));
+  background:var(--veille);border:1px solid var(--ambre);color:var(--encre);padding:10px 16px;border-radius:8px;font-size:.9rem;z-index:20;max-width:calc(100% - 32px)}
+.toast.erreur{border-color:var(--rouge)}
+@media (prefers-reduced-motion:no-preference){.toast{animation:arrive .25s ease-out}}
+@keyframes arrive{from{transform:translate(-50%,-8px)}to{transform:translate(-50%,0)}}
+</style>
+</head>
+<body>
+
+<!-- ============================== JOURNAL ============================== -->
+<main class="col vue" id="journal">
+  <header class="tete">
+    <div>
+      <h1>Carnet de rêves</h1>
+      <p>Notez dès le réveil, avant que le souvenir ne s'efface.</p>
+    </div>
+    <span class="mode" id="mode">Ouverture…</span>
+  </header>
+
+  <section class="carte accent rappel" id="rappelTest" hidden>
+    <div>
+      <strong>Est-ce que je rêve ?</strong>
+      <p class="note">Test de réalité : prenez 20 secondes pour vérifier, sincèrement.</p>
+    </div>
+    <div class="boutons">
+      <button class="secondaire" id="rappelPlusTard">Plus tard</button>
+      <button class="principal" id="rappelFaire">Faire le test</button>
+    </div>
+  </section>
+
+  <section class="carte" id="rappelSauvegarde" hidden>
+    <p id="rappelSauvegardeTexte"></p>
+    <div class="actions"><button class="secondaire" id="rappelSauvegardeNon">Plus tard</button><button class="principal" id="rappelSauvegardeOui">Sauvegarder</button></div>
+  </section>
+
+  <section class="stats" aria-label="Statistiques">
+    <div class="stat"><b id="sNb">0</b><span>Rêves notés</span></div>
+    <div class="stat"><b id="sLuc">0</b><span>Lucides</span></div>
+    <div class="stat"><b id="sSerie">0</b><span>Jours d'affilée</span></div>
+  </section>
+  <div class="signes" id="signes" hidden></div>
+
+  <section class="carte" id="parTechnique" hidden>
+    <h3>Ce qui marche pour vous</h3>
+    <table class="tech"><thead><tr><th>Technique de la veille</th><th>Rêves</th><th>Lucides</th><th>Taux</th></tr></thead><tbody id="tTech"></tbody></table>
+    <p class="note">Votre propre expérience : comparez les techniques sur plusieurs semaines avant de conclure (lucide et furtive comptées ensemble).</p>
+  </section>
+
+  <div class="filtres">
+    <input id="recherche" type="search" placeholder="Rechercher un lieu, une personne, un signe…" aria-label="Rechercher">
+    <button class="puce" id="fLucides" aria-pressed="false">Lucides seulement</button>
+  </div>
+
+  <section class="liste" id="liste" aria-live="polite"></section>
+
+  <section class="carte">
+    <h3>Sauvegarde</h3>
+    <p class="note" id="etatSauvegarde">Vos rêves restent sur ce téléphone. Enregistrez régulièrement une copie (Drive, e-mail, dossier Téléchargements) : elle permet de tout récupérer après un changement de téléphone.</p>
+    <div class="actions">
+      <button class="secondaire" id="importer">Importer une sauvegarde</button>
+      <button class="principal" id="exporter">Sauvegarder mes rêves</button>
+    </div>
+    <input type="file" id="fichierImport" accept="application/json,.json,text/plain" hidden>
+  </section>
+  <p class="pied" id="version"></p>
+</main>
+
+<button class="fab" id="nouveau">Noter un rêve</button>
+
+<!-- ============================== ÉDITEUR ============================== -->
+<main class="col vue" id="editeur" hidden>
+  <div class="barre">
+    <button class="lien" id="retour">← Journal</button>
+    <span class="mode" id="etatBrouillon"></span>
+  </div>
+
+  <div class="ligne">
+    <div class="champ" style="flex:0 1 180px">
+      <label for="date">Matin du</label>
+      <input id="date" type="date">
+    </div>
+    <div class="champ">
+      <label for="titre">Titre</label>
+      <input id="titre" type="text" placeholder="La maison aux escaliers sans fin">
+    </div>
+  </div>
+
+  <div class="champ">
+    <label for="recit">Récit</label>
+    <textarea id="recit" placeholder="Écrivez tout, dans le désordre : lieux, personnes, sensations, ce qui était étrange…"></textarea>
+    <p class="aide">Astuce : le micro du clavier de votre téléphone permet de dicter le récit les yeux à moitié fermés.</p>
+  </div>
+
+  <div class="dessin">
+    <span class="etiquette">Dessin</span>
+    <div class="toile"><canvas id="cv" aria-label="Zone de dessin"></canvas></div>
+    <div class="outils" id="couleurs"></div>
+    <div class="outils">
+      <button class="outil" id="gomme" aria-pressed="false">Gomme</button>
+      <button class="outil" id="annuler">Annuler</button>
+      <button class="outil" id="effacer">Tout effacer</button>
+      <label class="epaisseur">Trait <input id="taille" type="range" min="2" max="40" value="6"></label>
+    </div>
+  </div>
+
+  <div class="ligne">
+    <div class="champ">
+      <span class="etiquette">Lucidité</span>
+      <div class="segment" id="lucidite">
+        <button data-v="non" aria-pressed="true">Non</button>
+        <button data-v="furtive" aria-pressed="false">Furtive</button>
+        <button data-v="lucide" aria-pressed="false">Lucide</button>
+      </div>
+    </div>
+    <div class="champ">
+      <span class="etiquette">Netteté du souvenir</span>
+      <div class="clarte" id="clarte"></div>
+    </div>
+  </div>
+
+  <div class="champ">
+    <span class="etiquette">Technique pratiquée la veille</span>
+    <div class="puces" id="techniqueReve"></div>
+  </div>
+
+  <div class="champ">
+    <label for="signesIn">Signes de rêve</label>
+    <input id="signesIn" type="text" placeholder="voler, ancienne maison, dents qui tombent">
+    <p class="aide">Les éléments étranges ou récurrents, séparés par des virgules. Le carnet vous montre ceux qui reviennent le plus : ce sont vos meilleurs déclencheurs de lucidité.</p>
+  </div>
+
+  <div class="champ">
+    <label for="emotions">Émotions</label>
+    <input id="emotions" type="text" placeholder="angoisse, euphorie, curiosité">
+  </div>
+
+  <div class="actions">
+    <button class="danger" id="supprimer" hidden>Supprimer</button>
+    <button class="principal" id="enregistrer">Enregistrer le rêve</button>
+  </div>
+</main>
+
+<!-- ============================== CETTE NUIT ============================== -->
+<main class="col vue" id="nuit" hidden>
+  <header class="tete">
+    <div>
+      <h1>Cette nuit</h1>
+      <p>Réveil programmé puis MILD ou SSILD : la combinaison la mieux étayée par les études.</p>
+    </div>
+  </header>
+
+  <section class="carte">
+    <h3>1. Avant de dormir</h3>
+    <div class="ligne">
+      <div class="champ"><label for="coucher">Heure du coucher</label><input id="coucher" type="time"></div>
+      <div class="champ"><label for="duree">Dormir d'abord</label>
+        <select id="duree">
+          <option value="270">4 h 30</option>
+          <option value="300" selected>5 h (protocole Aspy)</option>
+          <option value="330">5 h 30</option>
+          <option value="360">6 h</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <span class="etiquette">Réveil conseillé</span>
+      <div class="heure" id="heureReveil">--:--</div>
+    </div>
+    <button class="principal" id="reglerReveil">Régler le réveil du téléphone</button>
+    <p class="note" id="noteReveil">Le réveil de votre téléphone s'ouvre avec l'heure pré-remplie : il ne reste qu'à valider.</p>
+
+    <div class="champ">
+      <span class="etiquette">Technique de cette nuit</span>
+      <div class="puces" id="techniqueNuit"></div>
+    </div>
+    <div id="signesSoir" class="note"></div>
+    <button class="secondaire" id="validerNuit">Noter cette technique pour la nuit</button>
+  </section>
+
+  <section class="carte accent">
+    <h3>2. Au réveil de la nuit</h3>
+    <p class="note">Lumière au minimum. Restez éveillé seulement quelques minutes : dans les études, se rendormir en moins de 10 minutes après la technique prédit le succès.</p>
+    <button class="secondaire" id="sombre" aria-pressed="false">Écran très sombre</button>
+    <ol class="etapes">
+      <li><p><b>Ne bougez pas.</b> Laissez revenir le rêve que vous quittez, puis notez quelques mots-clés.<br><button class="lien" id="noterNuit" style="color:var(--ambre)">→ Noter quelques mots</button></p></li>
+      <li><p><b>Repérez un signe de rêve</b> : un détail étrange ou impossible dans ce rêve.</p></li>
+    </ol>
+    <div class="segment" id="choixTechnique">
+      <button data-v="mild" aria-pressed="true">MILD</button>
+      <button data-v="ssild" aria-pressed="false">SSILD</button>
+    </div>
+    <div id="pasMild">
+      <ol class="etapes" style="counter-reset:e 2">
+        <li><p>Allongé, répétez mentalement, avec une vraie intention :</p></li>
+      </ol>
+      <p class="phrase">« La prochaine fois que je rêve, je me souviendrai que je rêve. »</p>
+      <ol class="etapes" style="counter-reset:e 3">
+        <li><p><b>Visualisez</b> : vous êtes de retour dans le rêve, vous remarquez le signe de rêve, vous comprenez « je rêve ». Imaginez ce que vous ferez alors.</p></li>
+        <li><p>Répétez phrase et visualisation jusqu'à ce que l'intention soit bien fixée, ou jusqu'à vous endormir.</p></li>
+      </ol>
+    </div>
+    <div id="pasSsild" hidden>
+      <ol class="etapes" style="counter-reset:e 2">
+        <li><p><b>Cycles rapides (4 à 6)</b> : quelques secondes sur chaque sens, sans rien forcer : la <b>vue</b> (le noir derrière les paupières), l'<b>ouïe</b> (les sons de la pièce, de votre corps), le <b>toucher</b> (poids du corps, chaleur, picotements).</p></li>
+        <li><p><b>Cycles lents (3 à 4)</b> : même ordre, environ 30 secondes à 1 minute par sens.</p></li>
+        <li><p>Prenez votre position d'endormissement et laissez venir le sommeil, l'esprit léger, sans chercher de résultat.</p></li>
+      </ol>
+    </div>
+    <p class="note">Puis rendormez-vous sans tarder. Au matin, notez vos rêves en indiquant la technique : le tableau « Ce qui marche pour vous » se remplira.</p>
+  </section>
+</main>
+
+<!-- ============================== JOURNÉE : TESTS DE RÉALITÉ ============================== -->
+<main class="col vue" id="jour" hidden>
+  <header class="tete">
+    <div>
+      <h1>Tests de réalité</h1>
+      <p>Prendre l'habitude, éveillé, de vérifier si l'on rêve, pour que le réflexe revienne en rêve.</p>
+    </div>
+  </header>
+
+  <section class="carte">
+    <div class="compteur"><b id="nbTests">0</b><span>tests aujourd'hui · objectif 10</span></div>
+    <div class="semaine" id="semaine" aria-label="Tests des 7 derniers jours"></div>
+  </section>
+
+  <section class="carte accent">
+    <h3>Faire un test maintenant</h3>
+    <ol class="etapes">
+      <li><p>Demandez-vous <b>sincèrement</b> : « Est-ce que je rêve en ce moment ? » Ne répondez pas trop vite.</p></li>
+      <li><p><b>Pincez-vous le nez</b>, bouche fermée, et essayez de respirer. En rêve, l'air passe souvent quand même.</p></li>
+      <li><p><b>Lisez ce code</b>, détournez les yeux, relisez-le. En rêve, les textes changent.</p></li>
+    </ol>
+    <div class="code" id="code">— — —</div>
+    <ol class="etapes" style="counter-reset:e 3">
+      <li><p><b>Observez</b> ce qui vous entoure : y a-t-il quelque chose d'impossible ou d'étrange ? Comment êtes-vous arrivé ici ?</p></li>
+      <li><p>Imaginez un instant que <b>ceci est un rêve</b> : que feriez-vous ?</p></li>
+    </ol>
+    <button class="principal" id="testFait">Test fait</button>
+  </section>
+
+  <section class="carte" id="declencheurs">
+    <h3>Vos déclencheurs</h3>
+    <p id="listeDeclencheurs" class="note"></p>
+  </section>
+
+  <section class="carte">
+    <p class="note">L'appli ne peut pas vous prévenir quand elle est fermée : un test vous est proposé chaque fois que vous l'ouvrez dans la journée. Pour le reste, liez le test à des gestes fréquents (passer une porte, regarder l'heure, recevoir un message) et à vos signes de rêve. Utilisés seuls, les tests de réalité ont peu d'effet dans les études ; ils sont utiles combinés au réveil nocturne et au MILD.</p>
+  </section>
+</main>
+
+<!-- ============================== GUIDE ============================== -->
+<main class="col vue" id="guide" hidden>
+  <header class="tete">
+    <div>
+      <h1>Ce que dit la science</h1>
+      <p>Synthèse des études publiées, sans promesses.</p>
+    </div>
+  </header>
+
+  <details open>
+    <summary>L'essentiel en 6 points</summary>
+    <ol>
+      <li>Le rêve lucide est un phénomène réel, vérifié en laboratoire : des dormeurs en sommeil paradoxal signalent leur lucidité par des mouvements d'yeux convenus (LaBerge et al., 1981), et on a même pu dialoguer avec eux en direct (Konkoly et al., 2021).</li>
+      <li>Il est fréquent : environ 55 % des gens en ont eu au moins un, et environ 23 % en ont au moins un par mois (méta-analyse de Saunders et al., 2016).</li>
+      <li>Aucune technique ne marche à coup sûr. La revue systématique de Stumbrys et al. (2012, 35 études) conclut qu'aucune n'est validée de façon fiable, mais que plusieurs sont prometteuses, surtout en combinaison.</li>
+      <li>La combinaison la mieux étayée : <b>se réveiller après environ 5 h de sommeil, puis pratiquer MILD</b> avant de se rendormir (Aspy et al., 2017 ; LaBerge et al., 2018). <span class="preuve forte">essais</span></li>
+      <li><b>SSILD fonctionne aussi bien que MILD</b> ; les mélanger n'apporte rien de plus (Aspy, 2020, 355 participants). <span class="preuve forte">essai</span></li>
+      <li>Deux facteurs prédisent le succès : <b>un bon rappel des rêves</b> (d'où le carnet) et <b>se rendormir en moins de 10 minutes</b> après la technique (Aspy, 2020).</li>
+    </ol>
+  </details>
+
+  <details>
+    <summary>Le programme conseillé</summary>
+    <ul>
+      <li><b>Chaque matin</b> : noter ses rêves, même en quelques mots, et relever les signes de rêve. Le rappel des rêves est la base de tout.</li>
+      <li><b>Dans la journée</b> : une dizaine de tests de réalité, de préférence quand un de vos signes de rêve apparaît (protocole de l'étude australienne : environ 10 par jour).</li>
+      <li><b>Certaines nuits</b> : réveil après ~5 h de sommeil, quelques minutes éveillé, puis MILD ou SSILD et rendormissement rapide.</li>
+      <li><b>Comparer</b> : indiquez la technique pratiquée dans chaque rêve noté ; le tableau du journal montre ce qui fonctionne pour vous.</li>
+    </ul>
+    <p>Dans l'étude australienne, le groupe qui combinait les trois techniques a obtenu des rêves lucides environ 17 % des nuits pendant la semaine d'essai (contre bien moins sans entraînement). Attendez-vous à des résultats progressifs.</p>
+  </details>
+
+  <details>
+    <summary>MILD (LaBerge, 1980)</summary>
+    <p><i>Mnemonic Induction of Lucid Dreams</i> : une technique de « mémoire prospective » (se souvenir de faire quelque chose plus tard).</p>
+    <ol>
+      <li>En vous réveillant d'un rêve, rappelez-le en détail.</li>
+      <li>En vous rendormant, répétez avec intention : « La prochaine fois que je rêve, je me souviendrai que je rêve. »</li>
+      <li>Visualisez-vous de retour dans ce rêve, remarquant un signe de rêve et devenant lucide.</li>
+      <li>Répétez jusqu'à vous endormir.</li>
+    </ol>
+    <p>C'est la technique cognitive la plus étudiée. Elle est plus efficace pratiquée lors d'un réveil en fin de nuit, quand le sommeil paradoxal (celui des rêves) est le plus abondant.</p>
+  </details>
+
+  <details>
+    <summary>SSILD</summary>
+    <p><i>Senses Initiated Lucid Dream</i> : technique née dans une communauté de pratiquants, testée scientifiquement par Aspy (2020). Après le réveil nocturne, on fait tourner son attention entre la vue (yeux fermés), l'ouïe et les sensations du corps : 4 à 6 cycles rapides, puis 3 à 4 cycles lents, puis on s'endort. Avantage : elle est simple et ne demande pas d'effort de mémoire.</p>
+  </details>
+
+  <details>
+    <summary>Réveil programmé (WBTB)</summary>
+    <p><i>Wake Back To Bed</i> : dormir environ 4 h 30 à 5 h, se réveiller, rester brièvement éveillé, puis se rendormir. Les études l'utilisent en association avec MILD ou SSILD. Durée d'éveil : quelques minutes dans les études d'Aspy, environ 30 minutes dans celle de LaBerge (2018). Un éveil trop long rend le rendormissement difficile, ce qui réduit les chances.</p>
+  </details>
+
+  <details>
+    <summary>Tests de réalité</summary>
+    <p>Se demander plusieurs fois par jour si l'on rêve, en vérifiant quelque chose (respirer nez pincé, relire un texte). Seuls, ils n'augmentent pas significativement les rêves lucides dans l'étude australienne (Aspy et al., 2017). Ils restent utiles en combinaison et pour repérer ses signes de rêve.</p>
+  </details>
+
+  <details>
+    <summary>Précautions</summary>
+    <ul>
+      <li>Le sommeil passe avant tout : réservez le réveil programmé à 2 ou 3 nuits par semaine (conseil de prudence), surtout si vous travaillez le lendemain.</li>
+      <li>Dans l'étude de 2020, réussir à faire un rêve lucide n'était pas associé à un sommeil de moins bonne qualité ; mais les réveils répétés fragmentent le sommeil.</li>
+      <li>À éviter ou à discuter avec un médecin en cas d'insomnie, de trouble du sommeil, ou de fragilité psychologique (dissociation, confusion entre rêve et réalité) : Soffer-Dudek (2020) appelle à la prudence sur ces points.</li>
+      <li>Une étude a utilisé la galantamine, un médicament : il ne doit jamais être pris sans avis médical.</li>
+      <li>Les paralysies du sommeil peuvent survenir lors des réveils nocturnes : elles sont impressionnantes mais sans danger.</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>Sources</summary>
+    <ul class="biblio">
+      <li>LaBerge, S. (1980). Lucid dreaming as a learnable skill: A case study. <i>Perceptual and Motor Skills</i>, 51, 1039–1042.</li>
+      <li>LaBerge, S., Nagel, L., Dement, W. & Zarcone, V. (1981). Lucid dreaming verified by volitional communication during REM sleep. <i>Perceptual and Motor Skills</i>, 52, 727–732.</li>
+      <li>LaBerge, S. & Rheingold, H. (1990). <i>Exploring the World of Lucid Dreaming</i>. Ballantine.</li>
+      <li>Stumbrys, T., Erlacher, D., Schädlich, M. & Schredl, M. (2012). Induction of lucid dreams: A systematic review of evidence. <i>Consciousness and Cognition</i>, 21(3), 1456–1475.</li>
+      <li>Saunders, D. T., Roe, C. A., Smith, G. & Clegg, H. (2016). Lucid dreaming incidence: A quality effects meta-analysis of 50 years of research. <i>Consciousness and Cognition</i>, 43, 197–215.</li>
+      <li>Aspy, D. J., Delfabbro, P., Proeve, M. & Mohr, P. (2017). Reality testing and the mnemonic induction of lucid dreams. <i>Dreaming</i>, 27(3), 206–231. <a href="https://doi.org/10.1037/drm0000059">doi:10.1037/drm0000059</a></li>
+      <li>LaBerge, S., LaMarca, K. & Baird, B. (2018). Pre-sleep treatment with galantamine stimulates lucid dreaming. <i>PLOS ONE</i>, 13(8), e0201246. <a href="https://doi.org/10.1371/journal.pone.0201246">doi:10.1371/journal.pone.0201246</a></li>
+      <li>Baird, B., Mota-Rolim, S. A. & Dresler, M. (2019). The cognitive neuroscience of lucid dreaming. <i>Neuroscience & Biobehavioral Reviews</i>, 100, 305–323.</li>
+      <li>Aspy, D. J. (2020). Findings from the International Lucid Dream Induction Study. <i>Frontiers in Psychology</i>, 11, 1746. <a href="https://doi.org/10.3389/fpsyg.2020.01746">doi:10.3389/fpsyg.2020.01746</a></li>
+      <li>Soffer-Dudek, N. (2020). Are lucid dreams good for us? A call for caution in lucid dream research. <i>Frontiers in Neuroscience</i>, 13, 1423.</li>
+      <li>Konkoly, K. R. et al. (2021). Real-time dialogue between experimenters and dreamers during REM sleep. <i>Current Biology</i>, 31(7), 1417–1427.</li>
+    </ul>
+  </details>
+  <p class="pied">Ce guide résume la recherche ; il ne remplace pas un avis médical.</p>
+</main>
+
+<nav class="nav" aria-label="Navigation">
+  <button data-vue="journal" aria-current="page"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>Journal</button>
+  <button data-vue="nuit"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>Cette nuit</button>
+  <button data-vue="jour"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5"/></svg>Tests</button>
+  <button data-vue="guide"><svg viewBox="0 0 24 24"><path d="M12 6c-2-1.5-5-2-8-1.5V19c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V4.5C17 4 14 4.5 12 6z"/><path d="M12 6v14.5"/></svg>Science</button>
+</nav>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  const VERSION = '1.0';
+  const native = window.CRNative || null;   // pont vers l'appli Android (absent dans un navigateur)
+  const $ = s => document.querySelector(s);
+  const CLE_LOCAL = "carnet-reves-v1";          // ancien stockage (navigateur), repris une fois
+  const CLE_BROUILLON = "carnet-reves-brouillon";
+  const CLE_TESTS = "carnet-tests";             // { "2026-10-24": 3, ... }
+  const CLE_REGLAGES = "carnet-reglages";
+  const TECHNIQUES = [
+    ["", "Aucune"],
+    ["tests", "Tests de réalité seuls"],
+    ["mild", "MILD au coucher"],
+    ["wbtb-mild", "Réveil + MILD"],
+    ["wbtb-ssild", "Réveil + SSILD"]
+  ];
+  const nomTechnique = v => (TECHNIQUES.find(t=>t[0]===v)||TECHNIQUES[0])[1];
+
+  let reves = [];
+  let charge = false;
+  let courant = null;          // rêve en cours d'édition
+  let filtreLucide = false;
+  let vue = "journal";
+
+  /* ---------- Petits stockages (réglages, tests) ---------- */
+  function lireJSON(cle, defaut){ try{ const v=JSON.parse(localStorage.getItem(cle)||"null"); return v==null?defaut:v; }catch(e){ return defaut; } }
+  function ecrireJSON(cle, v){ try{ localStorage.setItem(cle, JSON.stringify(v)); return true; }catch(e){ return false; } }
+  let reglages = Object.assign({coucher:"", duree:300, techniqueNuit:"wbtb-mild", plan:null, dernierTest:0, rappelReporte:0, derniereSauvegarde:0, sauvegardeReportee:0}, lireJSON(CLE_REGLAGES, {}));
+  const sauverReglages = () => ecrireJSON(CLE_REGLAGES, reglages);
+
+  /* ---------- Stockage des rêves : IndexedDB (grande capacité), repli localStorage ---------- */
+  let idb = null;
+  function ouvrirIDB(){
+    return new Promise((ok, ko)=>{
+      if(!window.indexedDB) return ko(new Error("IndexedDB absent"));
+      const rq = indexedDB.open("carnet-reves", 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore("reves", {keyPath:"id"});
+      rq.onsuccess = () => ok(rq.result);
+      rq.onerror = () => ko(rq.error);
+    });
+  }
+  function tx(mode, fn){
+    return new Promise((ok, ko)=>{
+      const t = idb.transaction("reves", mode); const st = t.objectStore("reves");
+      const rq = fn(st);
+      t.oncomplete = () => ok(rq && rq.result);
+      t.onerror = () => ko(t.error); t.onabort = () => ko(t.error || new Error("transaction annulée"));
+    });
+  }
+  const lireLocal = () => lireJSON(CLE_LOCAL, []);
+  const ecrireLocal = () => ecrireJSON(CLE_LOCAL, reves);
+
+  async function initStockage(){
+    try{
+      idb = await ouvrirIDB();
+      reves = await tx("readonly", st=>st.getAll()) || [];
+      const anciens = lireLocal();
+      if(anciens.length){ // reprise des rêves notés avant l'appli
+        for(const r of anciens){ if(!reves.some(x=>x.id===r.id)){ await tx("readwrite", st=>st.put(r)); reves.push(r); } }
+        try{ localStorage.removeItem(CLE_LOCAL); }catch(e){}
+      }
+      $("#mode").textContent = "Enregistré sur ce téléphone";
+      if(navigator.storage && navigator.storage.persist && !native) navigator.storage.persist().catch(()=>{});
+    }catch(e){
+      idb = null; reves = lireLocal();
+      $("#mode").textContent = "Enregistré sur cet appareil (mode simple)";
+    }
+    charge = true; afficher();
+  }
+  async function sauver(r){
+    if(idb) await tx("readwrite", st=>st.put(r));
+    const i = reves.findIndex(x=>x.id===r.id);
+    if(i>=0) reves[i]=r; else reves.push(r);
+    if(!idb && !ecrireLocal()) throw {message:"mémoire du téléphone pleine"};
+    afficher();
+  }
+  async function retirer(id){
+    if(idb) await tx("readwrite", st=>st.delete(id));
+    reves = reves.filter(x=>x.id!==id);
+    if(!idb) ecrireLocal();
+    afficher();
+  }
+
+  /* ---------- Outils ---------- */
+  const isoDe = x => { const y=new Date(x); y.setMinutes(y.getMinutes()-y.getTimezoneOffset()); return y.toISOString().slice(0,10); };
+  const auj = () => isoDe(new Date());
+  const matinProchain = () => { const d=new Date(); if(d.getHours()>=12) d.setDate(d.getDate()+1); return isoDe(d); };
+  const liste = s => (s||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const fmtDate = iso => { try{ return new Date(iso+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"}); }catch(e){ return iso; } };
+  const nouvelId = () => "r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const deux = n => String(n).padStart(2,"0");
+  function el(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
+  let tId;
+  function toast(msg, erreur){ const t=$("#toast"); t.textContent=msg; t.classList.toggle("erreur",!!erreur); t.hidden=false; clearTimeout(tId); tId=setTimeout(()=>t.hidden=true, erreur?5000:2200); }
+
+  function signesFrequents(n){
+    const compte = {};
+    reves.forEach(r=>(r.signes||[]).forEach(s=>compte[s]=(compte[s]||0)+1));
+    return Object.entries(compte).sort((a,b)=>b[1]-a[1]).slice(0,n);
+  }
+
+  /* ---------- Navigation ---------- */
+  function montrer(v){
+    if(courant) fermer(true);
+    vue = v;
+    ["journal","nuit","jour","guide"].forEach(x=>$("#"+x).hidden = x!==v);
+    $("#editeur").hidden = true;
+    $("#nouveau").hidden = v!=="journal";
+    document.querySelectorAll(".nav button").forEach(b=>b.setAttribute("aria-current", b.dataset.vue===v ? "page" : "false"));
+    if(v==="nuit") afficherNuit();
+    if(v==="jour") afficherJour();
+    if(v==="journal") afficher();
+    window.scrollTo(0,0);
+  }
+  document.querySelectorAll(".nav button").forEach(b=>b.addEventListener("click", ()=>montrer(b.dataset.vue)));
+
+  /* ---------- Journal ---------- */
+  function trier(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.cree||0)-(a.cree||0); }
+
+  function serie(){
+    const jours = new Set(reves.map(r=>r.date));
+    let n=0; const d=new Date();
+    if(!jours.has(isoDe(d))) d.setDate(d.getDate()-1);   // la série tient jusqu'à ce soir
+    while(jours.has(isoDe(d))){ n++; d.setDate(d.getDate()-1); }
+    return n;
+  }
+
+  function afficher(){
+    $("#sNb").textContent = reves.length;
+    $("#sLuc").textContent = reves.filter(r=>r.lucidite==="lucide").length;
+    $("#sSerie").textContent = serie();
+
+    const top = signesFrequents(5).filter(([,n])=>n>1);
+    const zs = $("#signes"); zs.replaceChildren();
+    if(top.length){
+      zs.append(el("span",null,"Signes récurrents :"));
+      top.forEach(([s,n])=>{ const t=el("span","tag"); t.append(el("strong",null,s)," ×"+n); zs.append(t); });
+      zs.hidden=false;
+    }else zs.hidden=true;
+
+    // Taux de lucidité par technique pratiquée la veille
+    const parT = {};
+    reves.forEach(r=>{ if(r.technique===undefined) return; const k=r.technique||""; parT[k]=parT[k]||{n:0,l:0}; parT[k].n++; if(r.lucidite==="lucide"||r.lucidite==="furtive") parT[k].l++; });
+    const tb = $("#tTech"); tb.replaceChildren();
+    const lignes = TECHNIQUES.filter(([k])=>parT[k]);
+    lignes.forEach(([k,nom])=>{
+      const tr=el("tr"); const s=parT[k];
+      tr.append(el("td",null,nom), el("td",null,String(s.n)), el("td",null,String(s.l)), el("td",null,Math.round(100*s.l/s.n)+" %"));
+      tb.append(tr);
+    });
+    $("#parTechnique").hidden = !(lignes.length && reves.some(r=>r.technique));
+
+    const q = $("#recherche").value.trim().toLowerCase();
+    const vus = reves.slice().sort(trier).filter(r=>{
+      if(filtreLucide && r.lucidite!=="lucide") return false;
+      if(!q) return true;
+      return [r.titre,r.recit,(r.signes||[]).join(" "),(r.emotions||[]).join(" ")].join(" ").toLowerCase().includes(q);
+    });
+
+    const zl = $("#liste"); zl.replaceChildren();
+    if(!charge){ const v=el("div","vide"); v.append(el("p",null,"Ouverture du carnet…")); zl.append(v); return; }
+    if(!reves.length){
+      const v=el("div","vide");
+      v.append(el("h2",null,"Aucun rêve noté pour l'instant"));
+      v.append(el("p",null,"Gardez le téléphone près du lit. Au réveil, ne bougez pas, laissez revenir les images, puis touchez « Noter un rêve ». Quelques mots-clés suffisent si le temps manque : le reste reviendra en écrivant."));
+      zl.append(v);
+    }else if(!vus.length){ const v=el("div","vide"); v.append(el("p",null,"Aucun rêve ne correspond à cette recherche.")); zl.append(v); }
+    vus.forEach(r=>{
+      const b=el("button","reve"); b.type="button";
+      const d=el("div");
+      d.append(el("span","date",fmtDate(r.date)));
+      d.append(el("h3",null,r.titre||"Rêve sans titre"));
+      if(r.recit) d.append(el("p",null,r.recit));
+      const m=el("div","marques");
+      if(r.lucidite==="lucide") m.append(el("span","tag lucide","Lucide"));
+      if(r.lucidite==="furtive") m.append(el("span","tag furtive","Lucidité furtive"));
+      (r.signes||[]).slice(0,3).forEach(s=>m.append(el("span","tag",s)));
+      if(m.childNodes.length) d.append(m);
+      b.append(d);
+      if(r.dessin){ const i=el("img"); i.src=r.dessin; i.alt="Dessin du rêve"; b.append(i); } else b.append(el("span"));
+      b.addEventListener("click",()=>ouvrir(r));
+      zl.append(b);
+    });
+    majSauvegarde();
+  }
+
+  $("#recherche").addEventListener("input", afficher);
+  $("#fLucides").addEventListener("click", e=>{ filtreLucide=!filtreLucide; e.currentTarget.setAttribute("aria-pressed",filtreLucide); afficher(); });
+
+  /* ---------- Éditeur ---------- */
+  const clarteZ = $("#clarte");
+  for(let i=1;i<=5;i++){ const b=el("button",null,String(i)); b.type="button"; b.dataset.v=i; b.setAttribute("aria-label","Netteté "+i+" sur 5"); clarteZ.append(b); }
+  clarteZ.addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; courant.clarte=+b.dataset.v; majClarte(); brouillon(); });
+  function majClarte(){ clarteZ.querySelectorAll("button").forEach(b=>b.classList.toggle("on", +b.dataset.v <= (courant.clarte||0))); }
+
+  $("#lucidite").addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return; courant.lucidite=b.dataset.v; majLucidite(); brouillon(); });
+  function majLucidite(){ $("#lucidite").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===courant.lucidite)); }
+
+  function puces(zone, valeur, onChoix){
+    zone.replaceChildren();
+    TECHNIQUES.forEach(([k,nom])=>{ const b=el("button","puce",nom); b.type="button"; b.dataset.v=k; b.setAttribute("aria-pressed", k===valeur);
+      b.addEventListener("click",()=>{ zone.querySelectorAll(".puce").forEach(x=>x.setAttribute("aria-pressed", x===b)); onChoix(k); }); zone.append(b); });
+  }
+
+  function ouvrir(r){
+    const neuf = !r;
+    const plan = reglages.plan && (reglages.plan.date===auj() || reglages.plan.date===matinProchain()) ? reglages.plan.technique : "";
+    courant = r ? JSON.parse(JSON.stringify(r)) : {id:nouvelId(), date:auj(), titre:"", recit:"", lucidite:"non", clarte:0, technique:plan, signes:[], emotions:[], dessin:"", cree:Date.now()};
+    if(courant.technique===undefined) courant.technique="";
+    courant.neuf = neuf;
+    if(neuf){ // reprise d'un brouillon non enregistré
+      try{ const br=JSON.parse(localStorage.getItem(CLE_BROUILLON)||"null"); if(br && (br.titre||br.recit)){ Object.assign(courant, br); $("#etatBrouillon").textContent="Brouillon repris"; } else $("#etatBrouillon").textContent=""; }catch(e){}
+    }else $("#etatBrouillon").textContent="";
+    $("#date").value=courant.date; $("#titre").value=courant.titre||""; $("#recit").value=courant.recit||"";
+    $("#signesIn").value=(courant.signes||[]).join(", "); $("#emotions").value=(courant.emotions||[]).join(", ");
+    majLucidite(); majClarte();
+    puces($("#techniqueReve"), courant.technique, k=>{ courant.technique=k; brouillon(); });
+    $("#supprimer").hidden = neuf; desarmer();
+    ["journal","nuit","jour","guide"].forEach(x=>$("#"+x).hidden=true);
+    $("#nouveau").hidden=true; $("#editeur").hidden=false;
+    window.scrollTo(0,0);
+    toile.charger(courant.dessin);
+    if(neuf) setTimeout(()=>$("#recit").focus({preventScroll:true}), 50);
+  }
+  function fermer(sansNav){
+    if(courant && courant.neuf){ lireChamps(); ecrireBrouillon(); }
+    $("#editeur").hidden=true; courant=null;
+    if(!sansNav) montrer("journal");
+  }
+
+  function lireChamps(){
+    courant.date=$("#date").value||auj(); courant.titre=$("#titre").value.trim(); courant.recit=$("#recit").value;
+    courant.signes=liste($("#signesIn").value); courant.emotions=liste($("#emotions").value);
+  }
+  function ecrireBrouillon(){
+    if(!courant || !courant.neuf) return;
+    if(!courant.titre && !courant.recit){ try{ localStorage.removeItem(CLE_BROUILLON); }catch(e){} return; }
+    ecrireJSON(CLE_BROUILLON, {date:courant.date,titre:courant.titre,recit:courant.recit,lucidite:courant.lucidite,clarte:courant.clarte,technique:courant.technique,signes:courant.signes,emotions:courant.emotions});
+  }
+  let bT;
+  function brouillon(){
+    if(!courant || !courant.neuf) return;
+    clearTimeout(bT); bT=setTimeout(()=>{ if(courant){ lireChamps(); ecrireBrouillon(); } }, 600);
+  }
+  ["#date","#titre","#recit","#signesIn","#emotions"].forEach(s=>$(s).addEventListener("input", brouillon));
+
+  $("#nouveau").addEventListener("click", ()=>ouvrir(null));
+  $("#retour").addEventListener("click", ()=>fermer());
+
+  $("#enregistrer").addEventListener("click", async e=>{
+    lireChamps();
+    if(!courant.titre && !courant.recit.trim() && !toile.aDuContenu()){ toast("Écrivez ou dessinez quelque chose avant d'enregistrer.", true); return; }
+    const btn=e.currentTarget; btn.disabled=true; btn.textContent="Enregistrement…";
+    const r = {id:courant.id, date:courant.date, titre:courant.titre, recit:courant.recit, lucidite:courant.lucidite, clarte:courant.clarte||0, technique:courant.technique||"",
+      signes:courant.signes, emotions:courant.emotions, dessin: toile.aDuContenu()? toile.exporter() : "", cree:courant.cree||Date.now(), modifie:Date.now()};
+    try{
+      await sauver(r);
+      if(courant.neuf){ try{ localStorage.removeItem(CLE_BROUILLON); }catch(_){} }
+      courant=null; montrer("journal"); toast("Rêve enregistré");
+    }catch(err){
+      toast("Échec de l'enregistrement : "+(err && err.message ? err.message : "réessayez dans un instant")+".", true);
+    }finally{ btn.disabled=false; btn.textContent="Enregistrer le rêve"; }
+  });
+
+  let armeT;
+  function desarmer(){ const b=$("#supprimer"); b.classList.remove("arme"); b.textContent="Supprimer"; clearTimeout(armeT); }
+  $("#supprimer").addEventListener("click", async e=>{
+    const b=e.currentTarget;
+    if(!b.classList.contains("arme")){ b.classList.add("arme"); b.textContent="Confirmer la suppression"; armeT=setTimeout(desarmer, 4000); return; }
+    try{ await retirer(courant.id); courant=null; montrer("journal"); toast("Rêve supprimé"); }catch(err){ toast("Suppression impossible, réessayez.", true); }
+  });
+
+  /* ---------- Toile de dessin ---------- */
+  const toile = (function(){
+    const cv=$("#cv"), ctx=cv.getContext("2d");
+    const N=900; cv.width=N; cv.height=N;
+    const fond = getComputedStyle(document.documentElement).getPropertyValue("--papier").trim() || "#100d0b";
+    const couleurs=["#ead9c2","#e0a35c","#d9775f","#c98bb9","#8fb3c9","#9cc29a","#5a4a3d"];
+    let couleur=couleurs[0], gomme=false, base=null, traits=[], trait=null;
+
+    const zc=$("#couleurs");
+    couleurs.forEach((c,i)=>{ const b=el("button","couleur"); b.type="button"; b.style.background=c; b.setAttribute("aria-label","Couleur "+(i+1)); b.setAttribute("aria-pressed", i===0);
+      b.addEventListener("click",()=>{ couleur=c; gomme=false; $("#gomme").setAttribute("aria-pressed","false"); zc.querySelectorAll(".couleur").forEach(x=>x.setAttribute("aria-pressed", x===b)); }); zc.append(b); });
+    $("#gomme").addEventListener("click", e=>{ gomme=!gomme; e.currentTarget.setAttribute("aria-pressed",gomme); });
+    $("#annuler").addEventListener("click", ()=>{ traits.pop(); redessiner(); });
+    let effT;
+    $("#effacer").addEventListener("click", e=>{
+      const b=e.currentTarget;
+      if(b.dataset.arme!=="1"){ b.dataset.arme="1"; b.textContent="Confirmer ?"; effT=setTimeout(()=>{ b.dataset.arme=""; b.textContent="Tout effacer"; },3000); return; }
+      clearTimeout(effT); b.dataset.arme=""; b.textContent="Tout effacer"; base=null; traits=[]; redessiner();
+    });
+
+    function dessinerTrait(t){
+      ctx.strokeStyle = t.gomme ? fond : t.c; ctx.lineWidth=t.w; ctx.lineCap="round"; ctx.lineJoin="round";
+      const p=t.p; if(!p.length) return;
+      ctx.beginPath(); ctx.moveTo(p[0][0],p[0][1]);
+      if(p.length===1){ ctx.lineTo(p[0][0]+0.1,p[0][1]); }
+      for(let i=1;i<p.length-1;i++){ const mx=(p[i][0]+p[i+1][0])/2, my=(p[i][1]+p[i+1][1])/2; ctx.quadraticCurveTo(p[i][0],p[i][1],mx,my); }
+      if(p.length>1) ctx.lineTo(p[p.length-1][0],p[p.length-1][1]);
+      ctx.stroke();
+    }
+    function redessiner(){
+      ctx.fillStyle=fond; ctx.fillRect(0,0,N,N);
+      if(base) ctx.drawImage(base,0,0,N,N);
+      traits.forEach(dessinerTrait);
+      if(trait) dessinerTrait(trait);
+    }
+    function point(e){ const r=cv.getBoundingClientRect(); return [ (e.clientX-r.left)*N/r.width, (e.clientY-r.top)*N/r.height ]; }
+
+    cv.addEventListener("pointerdown", e=>{
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      const r=cv.getBoundingClientRect(); const echelle=N/r.width;
+      trait={c:couleur, w:(+$("#taille").value)*echelle*(gomme?2.5:1), gomme, p:[point(e)]};
+      redessiner();
+    });
+    cv.addEventListener("pointermove", e=>{
+      if(!trait) return; e.preventDefault();
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      evs.forEach(ev=>trait.p.push(point(ev)));
+      redessiner();
+    });
+    function fin(){ if(trait){ traits.push(trait); trait=null; redessiner(); } }
+    cv.addEventListener("pointerup", fin); cv.addEventListener("pointercancel", fin);
+
+    return {
+      charger(src){
+        base=null; traits=[]; trait=null; redessiner();
+        if(src){ const im=new Image(); im.onload=()=>{ base=im; redessiner(); }; im.src=src; }
+      },
+      aDuContenu(){ return !!base || traits.length>0; },
+      exporter(){
+        const T=700, c2=document.createElement("canvas"); c2.width=T; c2.height=T;
+        c2.getContext("2d").drawImage(cv,0,0,T,T);
+        let q=0.82, url=c2.toDataURL("image/jpeg",q);
+        while(url.length>230000 && q>0.4){ q-=0.12; url=c2.toDataURL("image/jpeg",q); }
+        return url;
+      }
+    };
+  })();
+
+  /* ---------- Cette nuit ---------- */
+  function heureReveil(){
+    const [h,m] = ($("#coucher").value||"23:00").split(":").map(Number);
+    const t = (h*60 + m + (+$("#duree").value)) % (24*60);
+    return [Math.floor(t/60), t%60];
+  }
+  function majReveil(){
+    const [h,m] = heureReveil();
+    $("#heureReveil").textContent = deux(h)+":"+deux(m);
+    reglages.coucher = $("#coucher").value; reglages.duree = +$("#duree").value; sauverReglages();
+  }
+  function afficherNuit(){
+    if(!reglages.coucher){ const d=new Date(); d.setMinutes(Math.ceil(d.getMinutes()/15)*15); reglages.coucher = deux(d.getHours())+":"+deux(d.getMinutes()); }
+    $("#coucher").value = reglages.coucher; $("#duree").value = String(reglages.duree||300);
+    majReveil();
+    $("#noteReveil").textContent = native && native.setAlarm
+      ? "Le réveil de votre téléphone s'ouvre avec l'heure pré-remplie : il ne reste qu'à valider."
+      : "Réglez le réveil de votre téléphone à cette heure (l'appli ne peut pas sonner elle-même).";
+    $("#reglerReveil").hidden = !(native && native.setAlarm);
+    puces($("#techniqueNuit"), reglages.techniqueNuit, k=>{ reglages.techniqueNuit=k; sauverReglages(); majChoixTechnique(); });
+    const top = signesFrequents(5);
+    $("#signesSoir").textContent = top.length ? "Vos signes de rêve à garder en tête ce soir : " + top.map(([s])=>s).join(", ") + "." : "Notez quelques rêves : vos signes de rêve apparaîtront ici pour préparer la nuit.";
+    majChoixTechnique();
+  }
+  function majChoixTechnique(){
+    const v = reglages.techniqueNuit==="wbtb-ssild" ? "ssild" : "mild";
+    $("#choixTechnique").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===v));
+    $("#pasMild").hidden = v!=="mild"; $("#pasSsild").hidden = v!=="ssild";
+  }
+  $("#coucher").addEventListener("input", majReveil);
+  $("#duree").addEventListener("change", majReveil);
+  $("#choixTechnique").addEventListener("click", e=>{ const b=e.target.closest("button"); if(!b) return;
+    $("#choixTechnique").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    $("#pasMild").hidden = b.dataset.v!=="mild"; $("#pasSsild").hidden = b.dataset.v!=="ssild"; });
+  $("#reglerReveil").addEventListener("click", ()=>{
+    const [h,m] = heureReveil();
+    const ok = native && native.setAlarm(h, m, "Rêve lucide : MILD / SSILD");
+    if(!ok) toast("Impossible d'ouvrir le réveil : réglez-le à "+deux(h)+":"+deux(m)+".", true);
+    reglages.plan = {date:matinProchain(), technique:reglages.techniqueNuit}; sauverReglages();
+  });
+  $("#validerNuit").addEventListener("click", ()=>{
+    reglages.plan = {date:matinProchain(), technique:reglages.techniqueNuit}; sauverReglages();
+    toast("Noté : « "+nomTechnique(reglages.techniqueNuit)+" » sera proposé pour les rêves de demain matin.");
+  });
+  $("#noterNuit").addEventListener("click", ()=>ouvrir(null));
+  $("#sombre").addEventListener("click", e=>{ const on=!document.documentElement.classList.contains("sombre"); document.documentElement.classList.toggle("sombre", on); e.currentTarget.setAttribute("aria-pressed", on); });
+
+  /* ---------- Tests de réalité ---------- */
+  const lireTests = () => lireJSON(CLE_TESTS, {});
+  function nouveauCode(){
+    const L="ABCDEFGHJKLMNPRSTUVWXYZ23456789"; let s="";
+    for(let i=0;i<6;i++){ s+=L[Math.floor(Math.random()*L.length)]; if(i===2) s+=" "; }
+    $("#code").textContent = s;
+  }
+  function afficherJour(){
+    const t = lireTests();
+    $("#nbTests").textContent = t[auj()]||0;
+    const z = $("#semaine"); z.replaceChildren();
+    const jours=[]; for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); jours.push(d); }
+    const max = Math.max(10, ...jours.map(d=>t[isoDe(d)]||0));
+    jours.forEach(d=>{ const n=t[isoDe(d)]||0; const c=el("div"); const b=el("i"); b.style.height=(4+56*n/max)+"%"; c.title=n+" tests";
+      c.append(el("span",null,String(n)), b, el("span",null,d.toLocaleDateString("fr-FR",{weekday:"narrow"}))); z.append(c); });
+    nouveauCode();
+    const top = signesFrequents(6);
+    $("#listeDeclencheurs").textContent = top.length
+      ? "Faites un test chaque fois que vous rencontrez, éveillé, l'un de vos signes de rêve : " + top.map(([s])=>s).join(", ") + "."
+      : "Vos signes de rêve les plus fréquents s'afficheront ici dès que vous en aurez noté. Ce sont les meilleurs moments pour faire un test.";
+  }
+  $("#testFait").addEventListener("click", ()=>{
+    const t = lireTests(); const k=auj(); t[k]=(t[k]||0)+1;
+    const limite = isoDe(Date.now()-90*864e5); Object.keys(t).forEach(d=>{ if(d<limite) delete t[d]; });
+    ecrireJSON(CLE_TESTS, t);
+    reglages.dernierTest = Date.now(); sauverReglages();
+    $("#rappelTest").hidden = true;
+    afficherJour(); toast(t[k]>=10 ? "Objectif du jour atteint" : "Test noté ("+t[k]+"/10)");
+  });
+
+  // Proposé à chaque ouverture de l'appli en journée (l'appli ne peut pas envoyer de notification)
+  function proposerTest(){
+    const h = new Date().getHours();
+    const depuis = Date.now() - Math.max(reglages.dernierTest||0, reglages.rappelReporte||0);
+    $("#rappelTest").hidden = !(h>=8 && h<22 && depuis > 45*60*1000);
+  }
+  $("#rappelFaire").addEventListener("click", ()=>montrer("jour"));
+  $("#rappelPlusTard").addEventListener("click", ()=>{ reglages.rappelReporte=Date.now(); sauverReglages(); $("#rappelTest").hidden=true; });
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ proposerTest(); if(vue==="jour") afficherJour(); } });
+
+  /* ---------- Sauvegarde / import ---------- */
+  function majSauvegarde(){
+    const d = reglages.derniereSauvegarde;
+    $("#etatSauvegarde").textContent = (d ? "Dernière sauvegarde : "+new Date(d).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"})+". " : "Aucune sauvegarde pour l'instant. ")
+      + "Vos rêves restent sur ce téléphone : enregistrez régulièrement une copie (Drive, e-mail, Téléchargements) pour pouvoir tout récupérer.";
+    const ancienne = Date.now() - Math.max(d||0, reglages.sauvegardeReportee||0) > 14*864e5;
+    const zr = $("#rappelSauvegarde");
+    zr.hidden = !(reves.length>=5 && ancienne);
+    if(!zr.hidden) $("#rappelSauvegardeTexte").textContent = d ? "Votre dernière sauvegarde date de plus de deux semaines. Une copie de vos "+reves.length+" rêves ?" : "Vous avez noté "+reves.length+" rêves. Faites une première copie de sauvegarde ?";
+  }
+  async function exporter(){
+    const donnees = {app:"carnet-reves", format:1, exporte:new Date().toISOString(), reves:reves.slice().sort(trier), tests:lireTests(),
+      reglages:{coucher:reglages.coucher, duree:reglages.duree, techniqueNuit:reglages.techniqueNuit}};
+    const texte = JSON.stringify(donnees);
+    const nom = "carnet-reves-"+auj()+".json";
+    if(native && native.beginSave){
+      if(!native.beginSave(nom)) return toast("Sauvegarde impossible (mémoire du téléphone).", true);
+      const P=400000; for(let i=0;i<texte.length;i+=P){ if(!native.appendSave(texte.slice(i,i+P))) return toast("Sauvegarde interrompue.", true); }
+      native.finishSave();   // le téléphone demande où enregistrer ; réponse dans CR.onSaved
+      return;
+    }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([texte],{type:"application/json"})); a.download=nom;
+    document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+    onSaved(true, "");
+  }
+  function onSaved(ok, msg){
+    if(ok){ reglages.derniereSauvegarde=Date.now(); sauverReglages(); majSauvegarde(); toast("Sauvegarde enregistrée"); }
+    else if(msg) toast("Sauvegarde non enregistrée : "+msg+".", true);
+  }
+  $("#exporter").addEventListener("click", exporter);
+  $("#rappelSauvegardeOui").addEventListener("click", exporter);
+  $("#rappelSauvegardeNon").addEventListener("click", ()=>{ reglages.sauvegardeReportee=Date.now(); sauverReglages(); majSauvegarde(); });
+  $("#importer").addEventListener("click", ()=>$("#fichierImport").click());
+  $("#fichierImport").addEventListener("change", e=>{
+    const f = e.target.files && e.target.files[0]; e.target.value=""; if(!f) return;
+    const lecteur = new FileReader();
+    lecteur.onload = async ()=>{
+      let d; try{ d = JSON.parse(lecteur.result); }catch(_){ return toast("Ce fichier n'est pas une sauvegarde du carnet.", true); }
+      const liste = Array.isArray(d) ? d : (d && Array.isArray(d.reves) ? d.reves : null);
+      if(!liste) return toast("Ce fichier n'est pas une sauvegarde du carnet.", true);
+      let ajoutes=0, maj=0;
+      try{
+        for(const r of liste){
+          if(!r || !r.id) continue;
+          const ex = reves.find(x=>x.id===r.id);
+          if(!ex){ await sauver(r); ajoutes++; }
+          else if((r.modifie||0) > (ex.modifie||0)){ await sauver(r); maj++; }
+        }
+      }catch(err){ return toast("Import interrompu : mémoire du téléphone pleine ?", true); }
+      if(d.tests){ const t=lireTests(); Object.entries(d.tests).forEach(([k,n])=>{ t[k]=Math.max(t[k]||0, n|0); }); ecrireJSON(CLE_TESTS, t); }
+      afficher();
+      toast(ajoutes+" rêve(s) ajouté(s)"+(maj?", "+maj+" mis à jour":"")+".");
+    };
+    lecteur.onerror = ()=>toast("Lecture du fichier impossible.", true);
+    lecteur.readAsText(f);
+  });
+
+  /* ---------- Bouton « retour » d'Android ---------- */
+  function onBack(){
+    if(!$("#editeur").hidden){ fermer(); return true; }
+    if(vue!=="journal"){ montrer("journal"); return true; }
+    return false;
+  }
+
+  window.CR = { onBack, onSaved };
+  $("#version").textContent = "Carnet de rêves · v" + VERSION;
+  afficher();
+  proposerTest();
+  initStockage().then(()=>{
+    console.info("Carnet de rêves prêt — v" + VERSION);     // repère pour l'essai automatique
+    if(native && native.ready) native.ready();
+  });
+})();
+</script>
+</body>
+</html>
