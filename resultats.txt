@@ -1,0 +1,9 @@
+OK — Installation
+OK — Page de l'appli chargée
+OK — Démarrage : journal affiché
+OK — Éditeur de rêve ouvert
+OK — Bouton retour : revient au journal
+OK — Écran « Cette nuit » affiché
+OK — Horloge ouverte avec l'heure du réveil (com.google.android.deskclock/com.android.deskclock.DeskClock)
+OK — Aucun plantage de l'appli
+OK — Aucune erreur JavaScript
